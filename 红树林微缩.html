@@ -1,0 +1,1924 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红树林的生存智慧 · 低多边形 3D 科普场景</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;overflow:hidden;background:#081a18;
+    font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  #stage{position:fixed;inset:0;}
+  canvas{display:block;}
+
+  /* ---------- 加载层 ---------- */
+  #boot{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:16px;background:#081a18;
+    color:#9fd9c5;font-size:14px;letter-spacing:1px;transition:opacity .5s;}
+  #boot .spinner{width:34px;height:34px;border-radius:50%;
+    border:3px solid rgba(110,231,183,.18);border-top-color:#6ee7b7;
+    animation:spin .9s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ---------- 悬浮标注 ---------- */
+  #labels{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:20;}
+  .label{
+    position:absolute;left:0;top:0;display:flex;align-items:center;gap:7px;
+    padding:5px 13px 5px 5px;border-radius:999px;
+    background:rgba(7,34,30,.82);border:1px solid rgba(110,231,183,.45);
+    color:#dcf9ec;font-size:13px;font-weight:500;white-space:nowrap;
+    pointer-events:auto;cursor:pointer;
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    box-shadow:0 4px 18px rgba(0,0,0,.4);
+    transition:background .2s,border-color .2s,box-shadow .2s,opacity .25s;
+    will-change:transform;
+  }
+  .label:hover{background:rgba(16,88,72,.96);border-color:#6ee7b7;
+    box-shadow:0 0 0 3px rgba(110,231,183,.16),0 8px 24px rgba(0,0,0,.5);}
+  .label .num{width:20px;height:20px;border-radius:50%;flex:0 0 auto;
+    background:linear-gradient(135deg,#6ee7b7,#34d399);color:#04231a;
+    font-size:11.5px;font-weight:800;display:grid;place-items:center;}
+
+  /* ---------- 标题 ---------- */
+  .hud-top{position:fixed;top:20px;left:24px;color:#eafaf3;pointer-events:none;
+    text-shadow:0 2px 16px rgba(0,0,0,.75);z-index:25;}
+  .hud-top h1{font-size:21px;font-weight:700;letter-spacing:3px;}
+  .hud-top h1 span{color:#6ee7b7;}
+  .hud-top p{margin-top:6px;font-size:12.5px;letter-spacing:1.4px;opacity:.7;}
+
+  /* ---------- 右上角控制面板 ---------- */
+  .controls{position:fixed;right:20px;top:20px;width:186px;padding:12px;
+    border-radius:14px;background:rgba(6,28,26,.82);
+    border:1px solid rgba(110,231,183,.22);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    box-shadow:0 12px 36px rgba(0,0,0,.45);z-index:40;
+    transition:opacity .3s;}
+  .controls .btn{display:block;width:100%;margin-top:7px;padding:9px 10px;
+    border-radius:10px;border:1px solid rgba(110,231,183,.3);
+    background:rgba(110,231,183,.08);color:#c9f4e2;font-size:12.5px;
+    letter-spacing:.8px;cursor:pointer;transition:.18s;font-family:inherit;}
+  .controls .btn:first-child{margin-top:0;}
+  .controls .btn:hover{background:rgba(110,231,183,.2);border-color:#6ee7b7;color:#fff;}
+  .controls .btn.on{background:rgba(52,211,153,.26);border-color:#6ee7b7;color:#fff;}
+
+  /* ---------- 右侧信息面板 ---------- */
+  #panel{
+    position:fixed;top:16px;right:16px;bottom:16px;
+    width:clamp(300px,30vw,404px);
+    display:flex;flex-direction:column;
+    background:rgba(7,25,23,.88);
+    border:1px solid rgba(110,231,183,.28);
+    border-radius:18px;
+    backdrop-filter:blur(18px) saturate(1.15);
+    -webkit-backdrop-filter:blur(18px) saturate(1.15);
+    box-shadow:0 26px 70px rgba(0,0,0,.65);
+    transform:translateX(calc(100% + 34px));
+    transition:transform .52s cubic-bezier(.22,.86,.28,1);
+    z-index:35;overflow:hidden;
+  }
+  #panel.open{transform:translateX(0);}
+
+  .panel-close{position:absolute;right:12px;top:12px;width:30px;height:30px;
+    border-radius:50%;border:1px solid rgba(110,231,183,.4);
+    background:rgba(4,22,20,.75);color:#b5e8d6;font-size:14px;cursor:pointer;
+    line-height:1;transition:.18s;z-index:5;
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+  .panel-close:hover{background:rgba(52,211,153,.32);color:#fff;border-color:#6ee7b7;}
+
+  .panel-photo{position:relative;flex:0 0 44%;min-height:170px;
+    overflow:hidden;background:#0a1f1c;cursor:zoom-in;}
+  .panel-photo img{width:100%;height:100%;object-fit:cover;display:block;
+    transition:transform .4s cubic-bezier(.2,.8,.3,1);
+    transform-origin:50% 50%;will-change:transform;
+    user-select:none;-webkit-user-drag:none;}
+  .photo-badge{position:absolute;left:10px;bottom:10px;
+    padding:3px 9px;border-radius:999px;font-size:10.5px;letter-spacing:1px;
+    background:rgba(4,22,20,.7);border:1px solid rgba(110,231,183,.35);
+    color:#9fe3cb;backdrop-filter:blur(6px);pointer-events:none;}
+
+  .panel-info{flex:1 1 auto;overflow-y:auto;padding:16px 20px 18px;}
+  .panel-info::-webkit-scrollbar{width:5px;}
+  .panel-info::-webkit-scrollbar-thumb{background:rgba(110,231,183,.28);border-radius:3px;}
+  .panel-info::-webkit-scrollbar-track{background:transparent;}
+
+  .panel-cat{display:inline-block;padding:3px 10px;border-radius:999px;
+    background:rgba(52,211,153,.16);border:1px solid rgba(110,231,183,.4);
+    color:#6ee7b7;font-size:11px;letter-spacing:1.6px;margin-bottom:9px;}
+  .panel-info h2{font-size:17.5px;font-weight:700;letter-spacing:1.2px;
+    color:#f2fffa;margin-bottom:9px;}
+  .panel-info p{font-size:13.5px;line-height:1.92;color:#c6e6dc;
+    letter-spacing:.2px;text-align:justify;}
+  .panel-info p b{color:#6ee7b7;font-weight:600;}
+  .panel-tag{margin-top:13px;padding-top:11px;
+    border-top:1px dashed rgba(110,231,183,.25);
+    font-size:12px;color:#79c2a8;letter-spacing:.6px;}
+
+  .hint{position:fixed;left:24px;bottom:20px;font-size:12px;
+    color:rgba(200,235,222,.42);letter-spacing:1px;
+    pointer-events:none;z-index:25;}
+
+  @media (max-width:820px){
+    .controls{width:150px;right:10px;top:10px;padding:9px;}
+    .controls .btn{font-size:11px;padding:7px 6px;}
+    .hud-top{left:14px;top:14px;}
+    .hud-top h1{font-size:15px;letter-spacing:2px;}
+    .hud-top p{font-size:10.5px;}
+    .hint{display:none;}
+    .label{font-size:11.5px;padding:4px 9px 4px 4px;}
+    .label .num{width:17px;height:17px;font-size:10px;}
+    #panel{width:calc(100vw - 20px);top:auto;height:52vh;bottom:10px;right:10px;}
+    .panel-photo{flex:0 0 40%;}
+  }
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+<div id="labels"></div>
+
+<div id="boot">
+  <div class="spinner"></div>
+  <div class="msg">正在生成红树林 3D 场景…</div>
+</div>
+
+<div class="hud-top">
+  <h1>红树林的<span>生存智慧</span></h1>
+  <p>从根 · 芽 · 叶看生物与环境的相互关系</p>
+</div>
+
+<div class="controls">
+  <button class="btn on" id="btnAuto">⏸ 开启自动潮汐</button>
+  <button class="btn on" id="btnLabels">◉ 显示结构标注</button>
+  <button class="btn" id="btnReset">⟲ 重置视角</button>
+</div>
+
+<aside id="panel" aria-hidden="true">
+  <button id="panelClose" class="panel-close" aria-label="关闭">✕</button>
+  <div class="panel-photo" id="photoWrap">
+    <img id="photoImg" alt="细节实拍" draggable="false">
+    <div class="photo-badge">实拍细节 · 悬停放大</div>
+  </div>
+  <div class="panel-info">
+    <div class="panel-cat" id="panelCat"></div>
+    <h2 id="panelTitle"></h2>
+    <p id="panelText"></p>
+    <div class="panel-tag" id="panelTag"></div>
+  </div>
+</aside>
+
+<div class="hint">拖动旋转 · 滚轮缩放 · 点击标签查看局部特写</div>
+
+<script>
+/* =========================================================
+   加载失败兜底提示
+   ========================================================= */
+window.addEventListener('error', function (e) {
+  var boot = document.getElementById('boot');
+  if (!boot) return;
+  var msg = boot.querySelector('.msg');
+  if (msg) msg.textContent = '3D 资源加载失败，请检查网络后刷新（' + (e.message || '未知错误') + '）';
+  var sp = boot.querySelector('.spinner');
+  if (sp) { sp.style.animation = 'none'; sp.style.borderTopColor = '#f87171'; }
+}, true);
+
+setTimeout(function () {
+  var boot = document.getElementById('boot');
+  if (!boot) return;
+  var msg = boot.querySelector('.msg');
+  if (msg && msg.textContent.indexOf('失败') === -1) {
+    msg.textContent = '加载较慢，正在重试… 请确认可访问 unpkg.com';
+  }
+}, 9000);
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* =========================================================
+   1. 渲染器 / 场景 / 相机
+   ========================================================= */
+const stage = document.getElementById('stage');
+const labelLayer = document.getElementById('labels');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xa9c8cf, 44, 115);
+
+const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.08, 500);
+
+const HOME_POS = new THREE.Vector3(16.5, 12.0, 22.5);
+const HOME_TGT = new THREE.Vector3(0, 2.4, 1.4);
+camera.position.copy(HOME_POS);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(HOME_TGT);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 0.7;
+controls.maxDistance = 62;
+controls.maxPolarAngle = Math.PI * 0.505;
+controls.update();
+
+/* =========================================================
+   2. 天空 & 光照
+   ========================================================= */
+(function buildSky() {
+  const geo = new THREE.SphereGeometry(300, 32, 20);
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      cTop: { value: new THREE.Color(0x4d93bd) },
+      cMid: { value: new THREE.Color(0xbad8de) },
+      cBot: { value: new THREE.Color(0xeef3e9) }
+    },
+    vertexShader: `
+      varying vec3 vPos;
+      void main(){ vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+    `,
+    fragmentShader: `
+      varying vec3 vPos;
+      uniform vec3 cTop; uniform vec3 cMid; uniform vec3 cBot;
+      void main(){
+        float h = normalize(vPos).y;
+        vec3 c = mix(cBot, cMid, smoothstep(-0.10, 0.30, h));
+        c = mix(c, cTop, smoothstep(0.24, 0.92, h));
+        gl_FragColor = vec4(c, 1.0);
+      }
+    `
+  });
+  scene.add(new THREE.Mesh(geo, mat));
+})();
+
+scene.add(new THREE.HemisphereLight(0xd2ecff, 0x6a5942, 1.18));
+
+const sun = new THREE.DirectionalLight(0xfff4de, 1.9);
+sun.position.set(-17, 26, 13);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -24;
+sun.shadow.camera.right = 24;
+sun.shadow.camera.top = 24;
+sun.shadow.camera.bottom = -24;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 76;
+sun.shadow.bias = -0.0011;
+sun.shadow.normalBias = 0.022;
+scene.add(sun);
+
+const rim = new THREE.DirectionalLight(0x9fc9e0, 0.38);
+rim.position.set(15, 9, -15);
+scene.add(rim);
+
+/* =========================================================
+   3. 公共材质（低多边形风格）
+   ========================================================= */
+const barkMat  = new THREE.MeshStandardMaterial({ color: 0x7a6953, roughness: 1, flatShading: true });
+const barkDark = new THREE.MeshStandardMaterial({ color: 0x5b4d3c, roughness: 1, flatShading: true });
+const leafA    = new THREE.MeshStandardMaterial({ color: 0x2e6b33, roughness: .94, flatShading: true });
+const leafB    = new THREE.MeshStandardMaterial({ color: 0x3f8a3e, roughness: .94, flatShading: true });
+const podMat   = new THREE.MeshStandardMaterial({ color: 0x7cb03e, roughness: .82, flatShading: true });
+
+/* =========================================================
+   4. 泥滩
+   ========================================================= */
+function buildMudTexture() {
+  const S = 512;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#6b5a43';
+  c.fillRect(0, 0, S, S);
+  for (let i = 0; i < 2600; i++) {
+    const x = Math.random() * S, y = Math.random() * S;
+    const r = Math.random() * 24 + 2;
+    const v = 40 + Math.random() * 74;
+    c.fillStyle = `rgba(${v + 24},${v + 8},${v - 14},${Math.random() * 0.2})`;
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+  }
+  c.strokeStyle = 'rgba(34,26,18,0.25)';
+  for (let i = 0; i < 70; i++) {
+    c.lineWidth = Math.random() * 2 + .4;
+    c.beginPath();
+    let x = Math.random() * S, y = Math.random() * S;
+    c.moveTo(x, y);
+    for (let k = 0; k < 4; k++) {
+      x += (Math.random() - .5) * 100;
+      y += (Math.random() - .5) * 100;
+      c.lineTo(x, y);
+    }
+    c.stroke();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(11, 9);
+  t.anisotropy = 4;
+  return t;
+}
+const mudTex = buildMudTexture();
+
+const mudGeo = new THREE.PlaneGeometry(210, 170, 110, 88);
+mudGeo.rotateX(-Math.PI / 2);
+{
+  const pos = mudGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    const d = Math.hypot(x, z);
+    const y = Math.sin(x * .28) * .15 + Math.cos(z * .33) * .13 + Math.sin((x + z) * .55) * .06;
+    const flat = THREE.MathUtils.smoothstep(d, 0, 7) * .85 + .15;
+    pos.setY(i, y * flat);
+  }
+  mudGeo.computeVertexNormals();
+}
+const mud = new THREE.Mesh(mudGeo, new THREE.MeshStandardMaterial({
+  map: mudTex, color: 0xa89880, roughness: 1, metalness: 0
+}));
+mud.receiveShadow = true;
+scene.add(mud);
+
+/* 绿藻斑块 */
+(function addAlgae() {
+  const g = new THREE.CircleGeometry(1, 10);
+  const m = new THREE.MeshStandardMaterial({ color: 0x7cc24a, roughness: .95, transparent: true, opacity: .7 });
+  for (let i = 0; i < 44; i++) {
+    const p = new THREE.Mesh(g, m);
+    const a = Math.random() * Math.PI * 2;
+    const r = 5 + Math.random() * 13;
+    p.position.set(Math.cos(a) * r, .035, Math.sin(a) * r * .85 + 3);
+    p.rotation.x = -Math.PI / 2;
+    p.rotation.z = Math.random() * Math.PI;
+    const s = .35 + Math.random() * 1.5;
+    p.scale.set(s, s * (.6 + Math.random() * .7), 1);
+    scene.add(p);
+  }
+})();
+
+/* =========================================================
+   5. 高滩沙洲（白鹭的安全落脚点，永不被淹没）
+   ========================================================= */
+const SANDBAR = { x: 6.6, z: 6.9, topY: 1.47 };
+(function buildSandbar() {
+  const H = 1.7;
+  const geo = new THREE.CylinderGeometry(2.5, 4.3, H, 22, 2, false);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    if (Math.hypot(x, z) < .01) continue;
+    const ang = Math.atan2(z, x);
+    const n = 1 + Math.sin(ang * 3 + .7) * .07 + Math.cos(ang * 5) * .045;
+    pos.setX(i, x * n);
+    pos.setZ(i, z * n);
+  }
+  geo.computeVertexNormals();
+
+  const bar = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    map: mudTex, color: 0xd6c19a, roughness: 1, metalness: 0, flatShading: true
+  }));
+  bar.position.set(SANDBAR.x, .62, SANDBAR.z);
+  bar.castShadow = true;
+  bar.receiveShadow = true;
+  scene.add(bar);
+
+  SANDBAR.topY = .62 + H / 2;
+
+  for (let i = 0; i < 16; i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 1.9;
+    const b = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(.09 + Math.random() * .15, 0),
+      Math.random() > .5 ? leafB : leafA
+    );
+    b.position.set(SANDBAR.x + Math.cos(a) * r, SANDBAR.topY + .06, SANDBAR.z + Math.sin(a) * r);
+    b.scale.y = .55;
+    b.castShadow = true;
+    scene.add(b);
+  }
+  for (let i = 0; i < 11; i++) {
+    const a = Math.random() * Math.PI * 2, r = Math.random() * 2.1;
+    const st = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(.05 + Math.random() * .07, 0),
+      new THREE.MeshStandardMaterial({ color: 0x8b8272, roughness: 1, flatShading: true })
+    );
+    st.position.set(SANDBAR.x + Math.cos(a) * r, SANDBAR.topY + .02, SANDBAR.z + Math.sin(a) * r);
+    scene.add(st);
+  }
+})();
+
+/* =========================================================
+   6. 海水
+   ========================================================= */
+const WATER_BASE = -0.55;
+const WATER_RANGE = 1.70;
+
+const waterMat = new THREE.MeshStandardMaterial({
+  color: 0x2c7f98, transparent: true, opacity: .62,
+  roughness: .14, metalness: .45, side: THREE.DoubleSide
+});
+const water = new THREE.Mesh(new THREE.PlaneGeometry(250, 200), waterMat);
+water.rotation.x = -Math.PI / 2;
+water.position.y = WATER_BASE + .35 * WATER_RANGE;
+water.receiveShadow = true;
+scene.add(water);
+
+/* =========================================================
+   7. 红树植物
+   ========================================================= */
+const pneumatoGeo = new THREE.CylinderGeometry(.032, .055, 1, 5);
+
+function makePneumatophore() {
+  const h = .28 + Math.random() * .42;
+  const m = new THREE.Mesh(pneumatoGeo, barkDark);
+  m.scale.set(1, h, 1);
+  m.position.y = h / 2;
+  m.castShadow = true;
+  return m;
+}
+
+function makeFoliageBlob(r) {
+  const geo = new THREE.IcosahedronGeometry(r, 1);
+  const p = geo.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    v.multiplyScalar(.82 + Math.random() * .4);
+    p.setXYZ(i, v.x, v.y * .82, v.z);
+  }
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, Math.random() > .5 ? leafA : leafB);
+}
+
+function createTree(x, z, h, scale) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+
+  const trunkH = h * .56;
+  const trunkR = .2 * scale;
+
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(trunkR * .72, trunkR * 1.15, trunkH, 7, 1),
+    barkMat
+  );
+  trunk.position.y = trunkH / 2;
+  trunk.castShadow = true;
+  trunk.receiveShadow = true;
+  g.add(trunk);
+
+  const ROOTS = 8;
+  for (let i = 0; i < ROOTS; i++) {
+    const a = (i / ROOTS) * Math.PI * 2 + (Math.random() - .5) * .55;
+    const spread = (1.15 + Math.random() * .75) * scale;
+    const topY = trunkH * (.32 + Math.random() * .3);
+
+    const p0 = new THREE.Vector3(Math.cos(a) * trunkR * .6, topY, Math.sin(a) * trunkR * .6);
+    const p1 = new THREE.Vector3(Math.cos(a) * spread * .55, topY * .5, Math.sin(a) * spread * .55);
+    const p2 = new THREE.Vector3(Math.cos(a) * spread, -.06, Math.sin(a) * spread);
+
+    const curve = new THREE.CatmullRomCurve3([p0, p1, p2]);
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 9, trunkR * .34, 5, false), barkMat);
+    tube.castShadow = true;
+    g.add(tube);
+
+    const count = Math.round((2 + Math.random() * 3) * 1.5);
+    for (let k = 0; k < count; k++) {
+      const pr = makePneumatophore();
+      const ang = Math.random() * Math.PI * 2;
+      const rad = spread + .2 + Math.random() * 1.35;
+      pr.position.set(Math.cos(ang) * rad, 0, Math.sin(ang) * rad);
+      g.add(pr);
+    }
+  }
+
+  const crownY = trunkH;
+  const crownR = h * .30;
+  const blobs = 4 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < blobs; i++) {
+    const a = (i / blobs) * Math.PI * 2 + Math.random();
+    const rr = crownR * (.55 + Math.random() * .6);
+    const blob = makeFoliageBlob(rr * .78);
+    blob.position.set(
+      Math.cos(a) * crownR * .55,
+      crownY + (Math.random() - .3) * crownR * .75,
+      Math.sin(a) * crownR * .55
+    );
+    blob.castShadow = true;
+    g.add(blob);
+  }
+  const topBlob = makeFoliageBlob(crownR * .85);
+  topBlob.position.set(0, crownY + crownR * .42, 0);
+  topBlob.castShadow = true;
+  g.add(topBlob);
+
+  /* 胎生胚轴 */
+  if (Math.random() > .3) {
+    for (let i = 0; i < 8; i++) {
+      const len = .38 + Math.random() * .42;
+      const pod = new THREE.Mesh(new THREE.CylinderGeometry(.032, .012, len, 5), podMat);
+      const a = Math.random() * Math.PI * 2;
+      const rr = crownR * (.35 + Math.random() * .75);
+      pod.position.set(
+        Math.cos(a) * rr,
+        crownY - crownR * .55 - len / 2 + Math.random() * .25,
+        Math.sin(a) * rr
+      );
+      pod.castShadow = true;
+      g.add(pod);
+    }
+  }
+
+  /* 叶面盐结晶 */
+  if (Math.random() > .4) {
+    const saltMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, roughness: .38, emissive: 0x9fd8c8, emissiveIntensity: .3
+    });
+    for (let i = 0; i < 15; i++) {
+      const s = new THREE.Mesh(new THREE.SphereGeometry(.032, 5, 4), saltMat);
+      const a = Math.random() * Math.PI * 2;
+      const rr = crownR * (.5 + Math.random() * .9);
+      s.position.set(
+        Math.cos(a) * rr,
+        crownY + (Math.random() - .25) * crownR * 1.15,
+        Math.sin(a) * rr
+      );
+      g.add(s);
+    }
+  }
+
+  return g;
+}
+
+const treeDefs = [
+  { x: -6.2, z: -2.0, h: 6.8, s: 1.15 },
+  { x: -2.2, z:  3.0, h: 5.2, s: 0.92 },
+  { x:  3.0, z: -3.2, h: 7.2, s: 1.18 },
+  { x:  8.2, z:  0.6, h: 5.6, s: 0.95 },
+  { x:  0.2, z: -6.2, h: 4.6, s: 0.80 },
+  { x: -9.6, z:  4.2, h: 4.2, s: 0.76 },
+  { x:  9.2, z: -5.2, h: 5.0, s: 0.86 }
+];
+treeDefs.forEach(t => scene.add(createTree(t.x, t.z, t.h, t.s)));
+
+/* =========================================================
+   8. 动物模型
+   ========================================================= */
+function makeCrab() {
+  const g = new THREE.Group();
+  const red  = new THREE.MeshStandardMaterial({ color: 0xdb4f26, roughness: .55, flatShading: true });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x9c3016, roughness: .65, flatShading: true });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(.22, 10, 7), red);
+  body.scale.set(1.15, .55, .9);
+  body.position.y = .17;
+  body.castShadow = true;
+  g.add(body);
+
+  const claw = new THREE.Group();
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(.035, .045, .2, 5), red);
+  arm.position.set(0, .1, 0);
+  const pincer = new THREE.Mesh(new THREE.SphereGeometry(.115, 8, 6), red);
+  pincer.scale.set(1, .75, 1.35);
+  pincer.position.set(0, .23, .04);
+  const pincer2 = new THREE.Mesh(new THREE.SphereGeometry(.07, 7, 5), dark);
+  pincer2.scale.set(1, .6, 1.2);
+  pincer2.position.set(0, .29, .15);
+  claw.add(arm, pincer, pincer2);
+  claw.position.set(.3, .11, .05);
+  claw.rotation.z = -.42;
+  g.add(claw);
+  g.userData.claw = claw;
+
+  const small = new THREE.Mesh(new THREE.SphereGeometry(.07, 7, 5), red);
+  small.scale.set(1, .7, 1.2);
+  small.position.set(-.27, .19, .09);
+  g.add(small);
+
+  for (let i = 0; i < 3; i++) {
+    [-1, 1].forEach(sx => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(.016, .011, .28, 4), dark);
+      leg.position.set(sx * .19, .11, -.13 + i * .13);
+      leg.rotation.z = sx * .95;
+      leg.rotation.x = (i - 1) * .38;
+      g.add(leg);
+    });
+  }
+  [-1, 1].forEach(sx => {
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(.014, .014, .13, 4), dark);
+    stalk.position.set(sx * .07, .3, .1);
+    g.add(stalk);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(.03, 6, 5),
+      new THREE.MeshStandardMaterial({ color: 0x141414, roughness: .3 }));
+    eye.position.set(sx * .07, .37, .1);
+    g.add(eye);
+  });
+  return g;
+}
+
+function makeMudskipper() {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x9b8b6a, roughness: .72, flatShading: true });
+  const finMat  = new THREE.MeshStandardMaterial({
+    color: 0x6f6350, roughness: .78, flatShading: true, side: THREE.DoubleSide
+  });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(.22, 10, 8), bodyMat);
+  body.scale.set(2.1, .78, 1.0);
+  body.position.y = .16;
+  body.castShadow = true;
+  g.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.15, 8, 7), bodyMat);
+  head.scale.set(1.1, .9, 1.1);
+  head.position.set(.34, .19, 0);
+  g.add(head);
+
+  [-1, 1].forEach(sx => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(.052, 7, 6),
+      new THREE.MeshStandardMaterial({ color: 0x2b2419, roughness: .35 }));
+    eye.position.set(.4, .31, sx * .09);
+    g.add(eye);
+  });
+  [-1, 1].forEach(sx => {
+    const fin = new THREE.Mesh(new THREE.SphereGeometry(.12, 7, 5), finMat);
+    fin.scale.set(.95, .16, .55);
+    fin.position.set(.18, .06, sx * .22);
+    fin.rotation.z = .2;
+    g.add(fin);
+  });
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(.11, .28, 6), finMat);
+  tail.rotation.z = Math.PI / 2;
+  tail.position.set(-.54, .15, 0);
+  g.add(tail);
+  const dorsal = new THREE.Mesh(new THREE.ConeGeometry(.1, .22, 4), finMat);
+  dorsal.position.set(-.04, .31, 0);
+  dorsal.scale.set(1.5, 1, .28);
+  g.add(dorsal);
+
+  return g;
+}
+
+function makeEgret() {
+  const g = new THREE.Group();
+  const white   = new THREE.MeshStandardMaterial({ color: 0xf5f6f1, roughness: .88, flatShading: true });
+  const legMat  = new THREE.MeshStandardMaterial({ color: 0x2e2a26, roughness: .9 });
+  const beakMat = new THREE.MeshStandardMaterial({ color: 0xe9b23c, roughness: .6 });
+
+  const body = new THREE.Mesh(new THREE.SphereGeometry(.28, 10, 8), white);
+  body.scale.set(1.0, .85, 1.7);
+  body.position.y = 1.05;
+  body.rotation.x = .16;
+  body.castShadow = true;
+  g.add(body);
+
+  const neckCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 1.16, .26),
+    new THREE.Vector3(0, 1.42, .42),
+    new THREE.Vector3(0, 1.60, .44)
+  ]);
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(neckCurve, 9, .055, 6, false), white));
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.1, 8, 7), white);
+  head.position.set(0, 1.63, .47);
+  g.add(head);
+
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(.045, .34, 6), beakMat);
+  beak.rotation.x = Math.PI / 2 + .12;
+  beak.position.set(0, 1.62, .69);
+  g.add(beak);
+
+  [-1, 1].forEach(sx => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(.018, 6, 5),
+      new THREE.MeshStandardMaterial({ color: 0x111111 }));
+    eye.position.set(sx * .06, 1.66, .53);
+    g.add(eye);
+  });
+  [-1, 1].forEach(sx => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(.022, .017, .92, 5), legMat);
+    leg.position.set(sx * .1, .46, -.06);
+    g.add(leg);
+    const foot = new THREE.Mesh(new THREE.ConeGeometry(.085, .06, 3), legMat);
+    foot.position.set(sx * .1, .02, 0);
+    g.add(foot);
+  });
+
+  return g;
+}
+
+/* ---- 放置动物 ---- */
+const crabs = [];
+[[1.7, 5.2, -.7], [-3.0, 4.6, 2.4], [3.6, 2.6, 1.1]].forEach(([x, z, ry]) => {
+  const c = makeCrab();
+  c.position.set(x, 0, z);
+  c.rotation.y = ry;
+  c.userData.phase = Math.random() * Math.PI * 2;
+  scene.add(c);
+  crabs.push(c);
+});
+
+const fishes = [];
+[[-3.6, 6.3, .5], [0.9, 7.0, -.3]].forEach(([x, z, ry]) => {
+  const f = makeMudskipper();
+  f.position.set(x, 0, z);
+  f.rotation.y = ry;
+  f.userData.phase = Math.random() * Math.PI * 2;
+  scene.add(f);
+  fishes.push(f);
+});
+
+const EGRET_POS = new THREE.Vector3(6.3, SANDBAR.topY, 6.5);
+const egret = makeEgret();
+egret.position.copy(EGRET_POS);
+egret.rotation.y = -.9;
+scene.add(egret);
+
+/* =========================================================
+   9. 科普内容 / 镜头焦点
+   ========================================================= */
+const INFO = {
+  root: {
+    num: '①', cat: '适应 · 根', title: '呼吸根',
+    text: '红树林生长的滩涂淤泥极其缺氧，普通根系插在泥里会窒息腐烂。于是红树把根向上翻转，长出密密麻麻的指状<b>呼吸根</b>探出泥面，通过皮孔直接和空气换气。根的里面是海绵状的<b>通气组织</b>，像一包微小的气囊，把氧气储存下来，再慢慢输送给地下的根系。缺氧越严重的地方，呼吸根长得越密——白骨壤在缺氧滩涂上的呼吸根密度能达到 500～800 条/㎡，而在含氧较高的滩涂只有十几条。',
+    tag: '行为适应：缺氧淤泥 · 气体交换',
+    photo: 'root'
+  },
+  prop: {
+    num: '②', cat: '适应 · 根', title: '支柱根',
+    text: '滩涂又软又烂，加上每天两次潮水冲刷，普通植物站都站不稳。红树从树干基部向四周斜着伸出许多拱形的<b>支柱根</b>，像一只张开的龙爪牢牢插进淤泥，从不同方向撑住整棵树。这些根交叉成网，不但能抗风抗浪，还在水下形成复杂的缝隙，成了小鱼小蟹躲避天敌的庇护所。',
+    tag: '非生物因素：松软淤泥 · 潮汐冲击',
+    photo: 'prop'
+  },
+  leaf: {
+    num: '③', cat: '适应 · 叶', title: '盐腺泌盐',
+    text: '海水又咸又苦，喝进去的每一口水都带着盐。红树的根系先把大约 <b>80%</b> 的盐分挡在体外；剩下少量溜进体内的，靠叶片表皮上特化的<b>盐腺</b>主动排出去。盐腺把盐分送上叶面，水分一蒸发，就留下白花花的盐结晶——所以就算雨水把叶子冲干净，过几天又会重新冒出来。另一些红树（比如木榄）干脆不长盐腺，全靠根部拒盐，拒盐率能到 <b>99%</b>。',
+    tag: '非生物因素：高盐海水',
+    photo: 'leaf'
+  },
+  seed: {
+    num: '④', cat: '适应 · 芽', title: '胎生苗',
+    text: '普通的种子掉进滩涂，要么被潮水冲走，要么被高盐泡死。红树的办法是<b>胎生</b>：种子不离开母树，直接在树上萌发成一根根绿色的棒状<b>胚轴</b>，挂在枝头吸足母体的营养。成熟脱落后像飞镖一样垂直插进淤泥，大约 <b>48 小时</b>就能长根定植；要是没扎稳，它还能漂在海里几个月，等遇到合适的滩涂再落地生根。',
+    tag: '非生物因素：潮汐冲刷 · 高盐',
+    photo: 'seed'
+  },
+  crab: {
+    num: '⑤', cat: '适应 · 动物', title: '招潮蟹',
+    text: '在淤泥中挖掘洞穴，潮水来临时入洞躲避，同时避开白天滩涂高温；以滩涂有机碎屑为食。掘洞翻动淤泥、改善通气 —— 动物也参与改造滩涂环境，这是行为适应的一种。',
+    tag: '行为适应：避潮、避高温',
+    photo: 'crab'
+  },
+  fish: {
+    num: '⑥', cat: '适应 · 动物', title: '弹涂鱼',
+    text: '一般鱼离开水几分钟就会死，弹涂鱼却能趴在泥滩上待上大半天。它的皮肤和口腔黏膜可以辅助呼吸，胸鳍像两只小拐杖，撑着身体在泥上「走路」、蹦跳。退潮时它爬出来在滩涂上觅食，一有动静就弹跳着钻进红树根的缝隙里。这是对潮间带「一会儿有水、一会儿没水」的生活，最直接的适应。',
+    tag: '行为适应：两栖式活动',
+    photo: 'fish'
+  },
+  egret: {
+    num: '⑦', cat: '适应 · 动物', title: '白鹭（高滩）',
+    text: '白鹭是红树林里最显眼的访客，但它绝不会傻站着等潮水淹上来。它总是停在<b>高滩、沙洲</b>或者露出水面的树根上，随着潮起潮落挪动位置，在浅水里一步一步地走，用尖长的喙精准地叼起小鱼小蟹。红树林交错纵横的根系，既给它提供了落脚点，也把猎物聚拢在身边。',
+    tag: '群落 · 高滩栖息 · 构建生物栖息地',
+    photo: 'egret'
+  },
+  tide: {
+    num: '⑧', cat: '环境 · 非生物因素', title: '潮汐筛选',
+    text: '潮水不只是「淹一下」那么简单，它是一台不知疲倦的筛选机。涨潮时海水漫过滩涂，退潮时又带走细小的泥沙，留下颗粒更大的沉积物，一层一层堆积出粗细分明的<b>潮汐层理</b>。能在这种「今天泡咸水、明天晒太阳」的环境里活下来的生物，才被筛选出来——高盐、缺氧、反复冲刷，正是红树林这身「生存智慧」的考题。',
+    tag: '环境影响生物，生物也影响环境',
+    photo: 'tide'
+  }
+};
+
+/* 每个知识点的特写机位（相机绝不在模型内部） */
+const FOCUS = {
+  root:  { pos: new THREE.Vector3(-8.05, 0.72, -3.65), tgt: new THREE.Vector3(-6.10, 0.28, -1.90) },
+  prop:  { pos: new THREE.Vector3(-3.95, 1.05,  5.05), tgt: new THREE.Vector3(-2.10, 0.55,  2.90) },
+  leaf:  { pos: new THREE.Vector3( 4.65, 5.25, -5.45), tgt: new THREE.Vector3( 3.00, 4.60, -3.30) },
+  seed:  { pos: new THREE.Vector3( 9.65, 2.95,  2.35), tgt: new THREE.Vector3( 8.20, 2.50,  0.70) },
+  crab:  { pos: new THREE.Vector3( 2.65, 0.78,  6.95), tgt: new THREE.Vector3( 1.70, 0.25,  5.20) },
+  fish:  { pos: new THREE.Vector3(-4.55, 0.72,  8.05), tgt: new THREE.Vector3(-3.60, 0.18,  6.30) },
+  egret: { pos: new THREE.Vector3( 7.95, 3.15,  8.65), tgt: new THREE.Vector3( 6.30, 2.10,  6.50) },
+  tide:  { pos: new THREE.Vector3( 3.20, 1.55, 12.20), tgt: new THREE.Vector3( 0.50, 0.20,  6.00) }
+};
+
+/* =========================================================
+   10. 悬浮标注
+   ========================================================= */
+const LABELS = [
+  { key: 'root',  pos: [-6.90, 0.95, -0.40], text: '呼吸根' },
+  { key: 'prop',  pos: [-2.45, 1.75,  4.60], text: '支柱根' },
+  { key: 'leaf',  pos: [ 3.25, 6.05, -2.00], text: '盐腺' },
+  { key: 'seed',  pos: [ 9.45, 2.65,  1.60], text: '胎生苗' },
+  { key: 'crab',  pos: [ 1.70, 0.85,  5.70], text: '招潮蟹' },
+  { key: 'fish',  pos: [-3.60, 0.75,  6.80], text: '弹涂鱼' },
+  { key: 'egret', pos: [ 7.90, 3.35,  7.30], text: '白鹭（高滩）' },
+  { key: 'tide',  pos: [-10.50, 1.10, -6.50], text: '潮汐筛选' }
+];
+
+const labelObjs = [];
+LABELS.forEach(d => {
+  const el = document.createElement('div');
+  el.className = 'label';
+  el.innerHTML = `<span class="num">${INFO[d.key].num}</span><span>${d.text}</span>`;
+  el.addEventListener('click', () => openPoint(d.key));
+  labelLayer.appendChild(el);
+  labelObjs.push({ el, pos: new THREE.Vector3(...d.pos), key: d.key });
+});
+
+/* =========================================================
+   11. 信息面板
+   ========================================================= */
+const panelEl   = document.getElementById('panel');
+const panelCat  = document.getElementById('panelCat');
+const panelTitle= document.getElementById('panelTitle');
+const panelText = document.getElementById('panelText');
+const panelTag  = document.getElementById('panelTag');
+const photoWrap = document.getElementById('photoWrap');
+const photoImg  = document.getElementById('photoImg');
+
+let panelOpen = false;
+let currentKey = null;
+
+function openPoint(key) {
+  const info = INFO[key];
+  if (!info) return;
+  currentKey = key;
+
+  panelCat.textContent = info.cat;
+  panelTitle.textContent = info.num + ' ' + info.title;
+  panelText.innerHTML = info.text;
+  panelTag.textContent = '◆ ' + info.tag;
+  setPhoto(info.photo);
+
+  if (!panelOpen) {
+    panelOpen = true;
+    panelEl.classList.add('open');
+    panelEl.setAttribute('aria-hidden', 'false');
+  }
+
+  /* 镜头飞向特写（自动避开面板区域） */
+  const f = FOCUS[key];
+  if (f) {
+    const shifted = applyPanelShift(f.pos, f.tgt);
+    flyTo(shifted.pos, shifted.tgt, 1.15);
+  }
+}
+
+function closePanel() {
+  panelOpen = false;
+  panelEl.classList.remove('open');
+  panelEl.setAttribute('aria-hidden', 'true');
+  /* 关闭后镜头保持在当前位置，不回弹 */
+}
+
+document.getElementById('panelClose').addEventListener('click', closePanel);
+
+/* ---------- 面板位移：让 3D 主体避开面板 ---------- */
+function applyPanelShift(pos, tgt) {
+  if (!panelOpen) return { pos: pos.clone(), tgt: tgt.clone() };
+
+  const pw = panelEl.getBoundingClientRect().width;
+  const shiftPx = pw * 0.5;
+
+  const forward = new THREE.Vector3().subVectors(tgt, pos).normalize();
+  const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+
+  const dist = pos.distanceTo(tgt);
+  const vFov = THREE.MathUtils.degToRad(camera.fov);
+  const worldH = 2 * dist * Math.tan(vFov / 2);
+  const perPx = worldH / window.innerHeight;
+
+  const shift = right.multiplyScalar(shiftPx * perPx);
+  return {
+    pos: pos.clone().add(shift),
+    tgt: tgt.clone().add(shift)
+  };
+}
+
+/* =========================================================
+   12. 镜头飞行（平滑缓动）
+   ========================================================= */
+let fly = null;
+
+function flyTo(pos, tgt, dur = 1.1) {
+  fly = {
+    t: 0, dur,
+    p0: camera.position.clone(),
+    p1: pos.clone(),
+    t0: controls.target.clone(),
+    t1: tgt.clone()
+  };
+  controls.enabled = false;
+}
+
+function easeInOutQuad(k) {
+  return k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+}
+
+/* =========================================================
+   13. 交互按钮
+   ========================================================= */
+const btnAuto   = document.getElementById('btnAuto');
+const btnLabels = document.getElementById('btnLabels');
+const btnReset  = document.getElementById('btnReset');
+
+let autoTide = true;
+let showLabels = true;
+
+btnAuto.addEventListener('click', () => {
+  autoTide = !autoTide;
+  btnAuto.classList.toggle('on', autoTide);
+  btnAuto.textContent = autoTide ? '⏸ 开启自动潮汐' : '▶ 开启自动潮汐';
+});
+
+btnLabels.addEventListener('click', () => {
+  showLabels = !showLabels;
+  btnLabels.classList.toggle('on', showLabels);
+  btnLabels.textContent = showLabels ? '◉ 显示结构标注' : '◎ 隐藏结构标注';
+  labelLayer.style.display = showLabels ? 'block' : 'none';
+});
+
+btnReset.addEventListener('click', () => {
+  closePanel();
+  flyTo(HOME_POS, HOME_TGT, 1.2);
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* =========================================================
+   14. 图片放大（悬停 + 滚轮）
+   ========================================================= */
+let zoomFactor = 2.6;
+let isHovering = false;
+
+function applyZoom() {
+  photoImg.style.transform = `scale(${isHovering ? zoomFactor : 1})`;
+}
+
+photoWrap.addEventListener('mouseenter', () => { isHovering = true; applyZoom(); });
+photoWrap.addEventListener('mouseleave', () => { isHovering = false; applyZoom(); });
+
+photoWrap.addEventListener('mousemove', e => {
+  const r = photoWrap.getBoundingClientRect();
+  const px = ((e.clientX - r.left) / r.width) * 100;
+  const py = ((e.clientY - r.top) / r.height) * 100;
+  photoImg.style.transformOrigin = `${px}% ${py}%`;
+});
+
+photoWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomFactor = Math.max(1.5, Math.min(6, zoomFactor * (e.deltaY > 0 ? 0.88 : 1.14)));
+  if (isHovering) applyZoom();
+}, { passive: false });
+
+/* =========================================================
+   15. 实拍风格细节图生成（程序化绘制，可替换为真实照片）
+   ========================================================= */
+const PHOTO_W = 1000, PHOTO_H = 750;
+const photoCache = {};
+let noiseCanvas = null;
+
+function getNoiseCanvas() {
+  if (noiseCanvas) return noiseCanvas;
+  const s = 180;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = s;
+  const cx = cv.getContext('2d');
+  const img = cx.createImageData(s, s);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 128 + (Math.random() - .5) * 70;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 28;
+  }
+  cx.putImageData(img, 0, 0);
+  noiseCanvas = cv;
+  return cv;
+}
+
+function photoFinish(ctx, W, H, opt = {}) {
+  const vg = ctx.createRadialGradient(
+    W * .5, H * .46, Math.min(W, H) * .28,
+    W * .5, H * .5, Math.max(W, H) * .74
+  );
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, `rgba(0,0,0,${opt.vignette ?? .45})`);
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = .38;
+  ctx.fillStyle = ctx.createPattern(getNoiseCanvas(), 'repeat');
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'soft-light';
+  ctx.fillStyle = opt.tint || 'rgba(255,178,92,0.10)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+
+function applyShallowDOF(ctx, W, H, cx, cy, radius) {
+  try {
+    const sharp = document.createElement('canvas');
+    sharp.width = W; sharp.height = H;
+    sharp.getContext('2d').drawImage(ctx.canvas, 0, 0);
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.filter = 'blur(9px)';
+    ctx.drawImage(sharp, 0, 0);
+    ctx.restore();
+
+    const mask = document.createElement('canvas');
+    mask.width = W; mask.height = H;
+    const mc = mask.getContext('2d');
+    const rg = mc.createRadialGradient(cx, cy, radius * .2, cx, cy, radius);
+    rg.addColorStop(0, 'rgba(0,0,0,1)');
+    rg.addColorStop(.6, 'rgba(0,0,0,0.92)');
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    mc.fillStyle = rg;
+    mc.fillRect(0, 0, W, H);
+
+    const comp = document.createElement('canvas');
+    comp.width = W; comp.height = H;
+    const cc = comp.getContext('2d');
+    cc.drawImage(sharp, 0, 0);
+    cc.globalCompositeOperation = 'destination-in';
+    cc.drawImage(mask, 0, 0);
+
+    ctx.drawImage(comp, 0, 0);
+  } catch (err) { /* 忽略 */ }
+}
+
+/* ---------- ① 呼吸根 ---------- */
+function drawRootSpike(ctx, x, baseY, h, w, lit) {
+  const topY = baseY - h;
+  const g = ctx.createLinearGradient(x - w, 0, x + w, 0);
+  if (lit) {
+    g.addColorStop(0, '#1c150e');
+    g.addColorStop(.22, '#4e3f2c');
+    g.addColorStop(.46, '#9c8465');
+    g.addColorStop(.68, '#7b6549');
+    g.addColorStop(1, '#241b12');
+  } else {
+    g.addColorStop(0, '#2b2116');
+    g.addColorStop(.5, '#6b5842');
+    g.addColorStop(1, '#2f2519');
+  }
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(x - w, baseY);
+  ctx.quadraticCurveTo(x - w * .75, baseY - h * .55, x - w * .22, topY);
+  ctx.quadraticCurveTo(x, topY - h * .06, x + w * .22, topY);
+  ctx.quadraticCurveTo(x + w * .75, baseY - h * .55, x + w, baseY);
+  ctx.closePath();
+  ctx.fill();
+
+  if (lit) {
+    ctx.save();
+    ctx.globalAlpha = .32;
+    ctx.strokeStyle = '#d8c4a4';
+    ctx.lineWidth = w * .22;
+    ctx.beginPath();
+    ctx.moveTo(x - w * .3, baseY - h * .16);
+    ctx.quadraticCurveTo(x - w * .34, baseY - h * .6, x - w * .06, topY + h * .08);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawRootPhoto(ctx, W, H) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#a9bfbb');
+  g.addColorStop(.26, '#87a09a');
+  g.addColorStop(.36, '#6f8577');
+  g.addColorStop(.44, '#6d5b43');
+  g.addColorStop(.72, '#4b3b29');
+  g.addColorStop(1, '#231a11');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.globalAlpha = .2;
+  for (let i = 0; i < 70; i++) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1 + Math.random() * 2;
+    const y = H * .25 + Math.random() * H * .1;
+    const x = Math.random() * W;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 40 + Math.random() * 90, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.filter = 'blur(10px)';
+  for (let i = 0; i < 150; i++) {
+    const x = Math.random() * W;
+    const by = H * .4 + Math.random() * H * .12;
+    const hh = 12 + Math.random() * 34;
+    ctx.fillStyle = 'rgba(52,42,30,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(x, by - hh / 2, 2 + Math.random() * 2, hh / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  for (let i = 0; i < 90; i++) {
+    drawRootSpike(ctx, Math.random() * W,
+      H * .52 + Math.random() * H * .18,
+      26 + Math.random() * 70,
+      3 + Math.random() * 2.5, false);
+  }
+
+  for (let i = 0; i < 18; i++) {
+    drawRootSpike(ctx,
+      -30 + (i / 17) * (W + 60) + (Math.random() - .5) * 40,
+      H * (.80 + Math.random() * .16),
+      100 + Math.random() * 150,
+      7 + Math.random() * 6, true);
+  }
+
+  photoFinish(ctx, W, H, { vignette: .5, tint: 'rgba(255,170,80,0.12)' });
+}
+
+/* ---------- ② 支柱根 ---------- */
+function drawArch(ctx, cx, baseY, span, thick, lit) {
+  const half = span / 2;
+  const peak = baseY - span * .72;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+
+  ctx.strokeStyle = lit ? '#1d160f' : '#2a2118';
+  ctx.lineWidth = thick;
+  ctx.beginPath();
+  ctx.moveTo(cx - half, baseY);
+  ctx.quadraticCurveTo(cx, peak - span * .14, cx + half, baseY);
+  ctx.stroke();
+
+  const grad = ctx.createLinearGradient(cx - half, peak, cx + half, baseY);
+  if (lit) {
+    grad.addColorStop(0, '#3a2d1f');
+    grad.addColorStop(.32, '#9a8161');
+    grad.addColorStop(.54, '#b59a76');
+    grad.addColorStop(.8, '#6b5540');
+    grad.addColorStop(1, '#241b12');
+  } else {
+    grad.addColorStop(0, '#3a2f22');
+    grad.addColorStop(.5, '#7d6a50');
+    grad.addColorStop(1, '#2c2318');
+  }
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = thick * .78;
+  ctx.beginPath();
+  ctx.moveTo(cx - half, baseY);
+  ctx.quadraticCurveTo(cx, peak - span * .14, cx + half, baseY);
+  ctx.stroke();
+
+  if (lit) {
+    ctx.strokeStyle = 'rgba(230,210,176,0.42)';
+    ctx.lineWidth = thick * .15;
+    ctx.beginPath();
+    ctx.moveTo(cx - half * .72, baseY - span * .14);
+    ctx.quadraticCurveTo(cx - half * .2, peak - span * .05, cx + half * .18, peak + span * .16);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPropPhoto(ctx, W, H) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#4d6b5e');
+  g.addColorStop(.3, '#6a5c43');
+  g.addColorStop(.66, '#43351f');
+  g.addColorStop(1, '#1c150e');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.filter = 'blur(8px)';
+  ctx.globalAlpha = .62;
+  for (let i = 0; i < 26; i++) {
+    drawArch(ctx, Math.random() * W, H * (.46 + Math.random() * .34),
+      70 + Math.random() * 170, 9 + Math.random() * 12, false);
+  }
+  ctx.restore();
+
+  for (let i = 0; i < 14; i++) {
+    drawArch(ctx, Math.random() * W, H * (.62 + Math.random() * .28),
+      100 + Math.random() * 190, 13 + Math.random() * 15, false);
+  }
+
+  drawArch(ctx, 150, H * .99, 300, 40, true);
+  drawArch(ctx, 470, H * 1.02, 380, 48, true);
+  drawArch(ctx, 810, H * .98, 280, 36, true);
+
+  photoFinish(ctx, W, H, { vignette: .55, tint: 'rgba(255,160,70,0.12)' });
+}
+
+/* ---------- ③ 盐腺（叶片微距） ---------- */
+function drawSaltGlandPhoto(ctx, W, H) {
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#2d5a29');
+  g.addColorStop(.42, '#43803a');
+  g.addColorStop(1, '#1c3b19');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.globalAlpha = .25;
+  for (let i = 0; i < 120; i++) {
+    ctx.fillStyle = Math.random() > .5 ? '#5da34d' : '#22491e';
+    ctx.beginPath();
+    ctx.arc(Math.random() * W, Math.random() * H, 6 + Math.random() * 30, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(168,214,148,0.4)';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(-20, H * .74);
+  ctx.quadraticCurveTo(W * .5, H * .5, W + 20, H * .6);
+  ctx.stroke();
+
+  ctx.lineWidth = 2.6;
+  ctx.strokeStyle = 'rgba(150,200,132,0.26)';
+  for (let i = 0; i < 22; i++) {
+    const t = i / 22;
+    const bx = t * W;
+    const by = H * .74 - Math.sin(t * Math.PI) * H * .22;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.quadraticCurveTo(bx + 40, by - 70, bx + 90, by - 150);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  for (let i = 0; i < 340; i++) {
+    const x = Math.random() * W;
+    const y = Math.random() * H;
+    const r = .8 + Math.random() * 3.4;
+    ctx.save();
+    ctx.globalAlpha = .35 + Math.random() * .5;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(255,255,255,0.9)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  for (let i = 0; i < 26; i++) {
+    const x = Math.random() * W, y = Math.random() * H;
+    ctx.save();
+    ctx.globalAlpha = .7;
+    ctx.fillStyle = '#f4ffff';
+    ctx.translate(x, y);
+    ctx.rotate(Math.random() * Math.PI);
+    ctx.fillRect(-5, -4, 10, 8);
+    ctx.restore();
+  }
+
+  applyShallowDOF(ctx, W, H, W * .5, H * .48, W * .46);
+  photoFinish(ctx, W, H, { vignette: .42, tint: 'rgba(180,255,190,0.10)' });
+}
+
+/* ---------- ④ 胎生苗 ---------- */
+function drawPropagulePhoto(ctx, W, H) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#274d2a');
+  g.addColorStop(.4, '#3a6b35');
+  g.addColorStop(1, '#132613');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.filter = 'blur(14px)';
+  for (let i = 0; i < 30; i++) {
+    ctx.fillStyle = Math.random() > .5 ? '#4f8b41' : '#1b3a1a';
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * W, Math.random() * H,
+      30 + Math.random() * 70, 20 + Math.random() * 50, Math.random() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  const pods = [
+    { x: 220, y: 120, len: 470, w: 44, rot: .16 },
+    { x: 470, y: 70,  len: 560, w: 52, rot: -.08 },
+    { x: 740, y: 140, len: 430, w: 40, rot: .22 }
+  ];
+
+  pods.forEach(p => {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+
+    const grad = ctx.createLinearGradient(-p.w, 0, p.w, 0);
+    grad.addColorStop(0, '#24401a');
+    grad.addColorStop(.26, '#5d8d31');
+    grad.addColorStop(.5, '#8fc44a');
+    grad.addColorStop(.74, '#4e7a2a');
+    grad.addColorStop(1, '#1e3516');
+    ctx.fillStyle = grad;
+
+    ctx.beginPath();
+    ctx.moveTo(-p.w * .5, 0);
+    ctx.quadraticCurveTo(-p.w * .62, p.len * .5, -p.w * .14, p.len);
+    ctx.quadraticCurveTo(0, p.len + p.w * .5, p.w * .14, p.len);
+    ctx.quadraticCurveTo(p.w * .62, p.len * .5, p.w * .5, 0);
+    ctx.quadraticCurveTo(0, -p.w * .7, -p.w * .5, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.save();
+    ctx.globalAlpha = .38;
+    ctx.strokeStyle = '#d5f0a8';
+    ctx.lineWidth = p.w * .1;
+    ctx.beginPath();
+    ctx.moveTo(-p.w * .18, p.len * .08);
+    ctx.quadraticCurveTo(-p.w * .3, p.len * .55, -p.w * .05, p.len * .92);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+  });
+
+  applyShallowDOF(ctx, W, H, W * .48, H * .5, W * .44);
+  photoFinish(ctx, W, H, { vignette: .48, tint: 'rgba(200,255,150,0.10)' });
+}
+
+/* ---------- ⑤ 招潮蟹（大螯特写） ---------- */
+function drawCrabPhoto(ctx, W, H) {
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#4a5a3c');
+  bg.addColorStop(.45, '#5c4c33');
+  bg.addColorStop(1, '#241c12');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.filter = 'blur(16px)';
+  for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = Math.random() > .5 ? '#6b7f4d' : '#3c3222';
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * W, Math.random() * H,
+      40 + Math.random() * 90, 25 + Math.random() * 60, Math.random() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  /* 螯足臂 */
+  ctx.save();
+  const armGrad = ctx.createLinearGradient(300, H, 480, H * .55);
+  armGrad.addColorStop(0, '#7a2010');
+  armGrad.addColorStop(.5, '#c94220');
+  armGrad.addColorStop(1, '#e2603a');
+  ctx.fillStyle = armGrad;
+  ctx.beginPath();
+  ctx.moveTo(280, H + 20);
+  ctx.quadraticCurveTo(320, H * .72, 430, H * .52);
+  ctx.lineTo(520, H * .58);
+  ctx.quadraticCurveTo(400, H * .8, 420, H + 20);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  /* 掌节 */
+  ctx.save();
+  ctx.translate(560, H * .44);
+  ctx.rotate(-.18);
+  const palmGrad = ctx.createRadialGradient(-70, -90, 30, 0, 0, 260);
+  palmGrad.addColorStop(0, '#ff9d6b');
+  palmGrad.addColorStop(.35, '#ec6335');
+  palmGrad.addColorStop(.72, '#bd3a1c');
+  palmGrad.addColorStop(1, '#63170c');
+  ctx.fillStyle = palmGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 230, 178, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.globalAlpha = .3;
+  for (let i = 0; i < 200; i++) {
+    ctx.fillStyle = Math.random() > .5 ? '#ffd9c0' : '#6d1a0c';
+    ctx.beginPath();
+    ctx.arc((Math.random() - .5) * 400, (Math.random() - .5) * 300,
+      1 + Math.random() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.restore();
+
+  /* 可动指 */
+  ctx.save();
+  const fingerGrad = ctx.createLinearGradient(600, H * .3, 900, H * .1);
+  fingerGrad.addColorStop(0, '#e0603a');
+  fingerGrad.addColorStop(.55, '#c33c1e');
+  fingerGrad.addColorStop(1, '#6d1a0c');
+  ctx.fillStyle = fingerGrad;
+  ctx.beginPath();
+  ctx.moveTo(640, H * .36);
+  ctx.quadraticCurveTo(800, H * .30, 905, H * .14);
+  ctx.quadraticCurveTo(880, H * .23, 820, H * .34);
+  ctx.quadraticCurveTo(720, H * .44, 640, H * .44);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  /* 不动指 */
+  ctx.save();
+  ctx.fillStyle = '#a83015';
+  ctx.beginPath();
+  ctx.moveTo(650, H * .50);
+  ctx.quadraticCurveTo(790, H * .46, 860, H * .34);
+  ctx.quadraticCurveTo(800, H * .50, 700, H * .58);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  applyShallowDOF(ctx, W, H, W * .58, H * .44, W * .42);
+  photoFinish(ctx, W, H, { vignette: .5, tint: 'rgba(255,140,60,0.14)' });
+}
+
+/* ---------- ⑥ 弹涂鱼 ---------- */
+function drawMudskipperPhoto(ctx, W, H) {
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#7d8f6a');
+  bg.addColorStop(.32, '#6b5f45');
+  bg.addColorStop(.72, '#4a3b28');
+  bg.addColorStop(1, '#221a11');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.filter = 'blur(13px)';
+  for (let i = 0; i < 46; i++) {
+    ctx.fillStyle = Math.random() > .5 ? '#8a9a6e' : '#3f3220';
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * W, Math.random() * H,
+      50 + Math.random() * 110, 18 + Math.random() * 45, Math.random() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(W * .5, H * .56);
+  ctx.rotate(-.1);
+
+  /* 身体 */
+  const bodyGrad = ctx.createLinearGradient(0, -110, 0, 110);
+  bodyGrad.addColorStop(0, '#b3a284');
+  bodyGrad.addColorStop(.45, '#8f7f62');
+  bodyGrad.addColorStop(1, '#564a37');
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 300, 105, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* 背部斑点 */
+  ctx.save();
+  ctx.globalAlpha = .5;
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = Math.random() > .5 ? '#3f3625' : '#d8ccb0';
+    ctx.beginPath();
+    ctx.arc((Math.random() - .5) * 560, (Math.random() - .65) * 110,
+      2 + Math.random() * 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  /* 头 */
+  ctx.fillStyle = '#9a8a6c';
+  ctx.beginPath();
+  ctx.ellipse(290, -10, 90, 76, .12, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* 眼睛 */
+  ctx.fillStyle = '#2b2419';
+  ctx.beginPath();
+  ctx.arc(315, -58, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#f0e6d2';
+  ctx.beginPath();
+  ctx.arc(320, -62, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* 胸鳍 */
+  ctx.fillStyle = '#6f6350';
+  ctx.beginPath();
+  ctx.ellipse(120, 96, 105, 32, .45, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(60, 100, 92, 28, -.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* 背鳍 */
+  ctx.fillStyle = '#5d5342';
+  ctx.beginPath();
+  ctx.moveTo(-70, -96);
+  ctx.quadraticCurveTo(20, -175, 130, -112);
+  ctx.quadraticCurveTo(30, -128, -70, -96);
+  ctx.fill();
+
+  ctx.restore();
+
+  applyShallowDOF(ctx, W, H, W * .56, H * .54, W * .46);
+  photoFinish(ctx, W, H, { vignette: .52, tint: 'rgba(255,190,110,0.11)' });
+}
+
+/* ---------- ⑦ 白鹭 ---------- */
+function drawEgretPhoto(ctx, W, H) {
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#8aa8b0');
+  bg.addColorStop(.42, '#a7b9a8');
+  bg.addColorStop(.58, '#7b6c4f');
+  bg.addColorStop(1, '#33281a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.globalAlpha = .22;
+  for (let i = 0; i < 90; i++) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1 + Math.random() * 2.5;
+    const y = H * .3 + Math.random() * H * .16;
+    const x = Math.random() * W;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 30 + Math.random() * 80, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.filter = 'blur(11px)';
+  for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = Math.random() > .5 ? '#9db39a' : '#4a3d28';
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * W, H * (.62 + Math.random() * .3),
+      45 + Math.random() * 90, 14 + Math.random() * 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(W * .44, H * .60);
+
+  /* 腿 */
+  ctx.strokeStyle = '#3a342c';
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-14, 30); ctx.lineTo(-22, 205);
+  ctx.moveTo(16, 30);  ctx.lineTo(30, 205);
+  ctx.stroke();
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(-22, 205); ctx.lineTo(-64, 216);
+  ctx.moveTo(30, 205);  ctx.lineTo(72, 216);
+  ctx.stroke();
+
+  /* 身体 */
+  const bodyGrad = ctx.createLinearGradient(-120, -140, 90, 60);
+  bodyGrad.addColorStop(0, '#ffffff');
+  bodyGrad.addColorStop(.55, '#eef1ea');
+  bodyGrad.addColorStop(1, '#b9c4bd');
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(-30, -30, 138, 86, -.18, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* 颈 */
+  ctx.strokeStyle = '#f4f6f1';
+  ctx.lineWidth = 30;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(30, -60);
+  ctx.quadraticCurveTo(80, -150, 96, -212);
+  ctx.stroke();
+
+  /* 头 */
+  ctx.fillStyle = '#fafbf7';
+  ctx.beginPath();
+  ctx.ellipse(108, -228, 34, 27, .2, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* 喙 */
+  ctx.fillStyle = '#e9b23c';
+  ctx.beginPath();
+  ctx.moveTo(138, -238);
+  ctx.lineTo(232, -216);
+  ctx.lineTo(136, -218);
+  ctx.closePath();
+  ctx.fill();
+
+  /* 眼 */
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(122, -234, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* 翅羽 */
+  ctx.save();
+  ctx.globalAlpha = .5;
+  ctx.strokeStyle = '#c9d3cc';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 8; i++) {
+    ctx.beginPath();
+    ctx.moveTo(-100 + i * 12, -70 + i * 6);
+    ctx.quadraticCurveTo(-40 + i * 8, -40 + i * 5, 10 + i * 6, -20 + i * 4);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.restore();
+
+  /* 倒影 */
+  ctx.save();
+  ctx.globalAlpha = .14;
+  ctx.scale(1, -1);
+  ctx.translate(0, -H * .86);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(W * .44, H * .30, 90, 30, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  applyShallowDOF(ctx, W, H, W * .46, H * .46, W * .5);
+  photoFinish(ctx, W, H, { vignette: .46, tint: 'rgba(255,235,190,0.10)' });
+}
+
+/* ---------- ⑧ 潮汐筛选（沉积层理） ---------- */
+function drawTidePhoto(ctx, W, H) {
+  const g = ctx.createLinearGradient(0, 0, W * .4, H);
+  g.addColorStop(0, '#8a7a5e');
+  g.addColorStop(.45, '#6b5b43');
+  g.addColorStop(1, '#3a2e20');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  const bands = [
+    { y: .12, h: .06, c: '#9a8a68', s: 3 },
+    { y: .20, h: .09, c: '#7d6d4f', s: 7 },
+    { y: .31, h: .07, c: '#a0916f', s: 2 },
+    { y: .40, h: .11, c: '#6a5a40', s: 9 },
+    { y: .53, h: .08, c: '#8e7d5c', s: 4 },
+    { y: .63, h: .12, c: '#5c4c34', s: 11 },
+    { y: .77, h: .09, c: '#82714f', s: 5 },
+    { y: .88, h: .12, c: '#4a3b26', s: 13 }
+  ];
+
+  bands.forEach(b => {
+    const y0 = H * b.y;
+    const bh = H * b.h;
+    const bg2 = ctx.createLinearGradient(0, y0, 0, y0 + bh);
+    bg2.addColorStop(0, b.c);
+    bg2.addColorStop(1, shade(b.c, -22));
+    ctx.fillStyle = bg2;
+    ctx.beginPath();
+    ctx.moveTo(0, y0);
+    for (let x = 0; x <= W; x += 40) {
+      ctx.lineTo(x, y0 + Math.sin(x * .012 + b.y * 9) * 7);
+    }
+    ctx.lineTo(W, y0 + bh);
+    for (let x = W; x >= 0; x -= 40) {
+      ctx.lineTo(x, y0 + bh + Math.sin(x * .015 + b.y * 5) * 6);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    for (let i = 0; i < 260; i++) {
+      const px = Math.random() * W;
+      const py = y0 + Math.random() * bh;
+      ctx.save();
+      ctx.globalAlpha = .18 + Math.random() * .35;
+      ctx.fillStyle = Math.random() > .5 ? '#ffffff' : '#1d160e';
+      ctx.beginPath();
+      ctx.arc(px, py, Math.random() * b.s * .5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  });
+
+  /* 粗颗粒卵石 */
+  for (let i = 0; i < 90; i++) {
+    const px = Math.random() * W;
+    const py = H * (.45 + Math.random() * .55);
+    const r = 3 + Math.random() * 11;
+    ctx.save();
+    ctx.globalAlpha = .65;
+    const sg = ctx.createRadialGradient(px - r * .3, py - r * .3, r * .1, px, py, r);
+    sg.addColorStop(0, '#c2b394');
+    sg.addColorStop(1, '#6b5c40');
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.ellipse(px, py, r, r * .72, Math.random() * 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* 水膜高光 */
+  ctx.save();
+  ctx.globalAlpha = .12;
+  for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = '#bfe6ea';
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * W, H * (.1 + Math.random() * .5),
+      60 + Math.random() * 160, 6 + Math.random() * 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  photoFinish(ctx, W, H, { vignette: .42, tint: 'rgba(140,210,230,0.10)' });
+}
+
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n >> 16) + amt;
+  let g = ((n >> 8) & 0xff) + amt;
+  let b = (n & 0xff) + amt;
+  r = Math.max(0, Math.min(255, r));
+  g = Math.max(0, Math.min(255, g));
+  b = Math.max(0, Math.min(255, b));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+
+const PHOTO_PAINTERS = {
+  root:  drawRootPhoto,
+  prop:  drawPropPhoto,
+  leaf:  drawSaltGlandPhoto,
+  seed:  drawPropagulePhoto,
+  crab:  drawCrabPhoto,
+  fish:  drawMudskipperPhoto,
+  egret: drawEgretPhoto,
+  tide:  drawTidePhoto
+};
+
+/* 生成 + 缓存 */
+function getPhotoDataURL(key) {
+  if (photoCache[key]) return photoCache[key];
+  const cv = document.createElement('canvas');
+  cv.width = PHOTO_W;
+  cv.height = PHOTO_H;
+  const ctx = cv.getContext('2d');
+  try {
+    PHOTO_PAINTERS[key](ctx, PHOTO_W, PHOTO_H);
+  } catch (err) {
+    console.warn('photo gen failed', key, err);
+  }
+  const url = cv.toDataURL('image/jpeg', .92);
+  photoCache[key] = url;
+  return url;
+}
+
+function setPhoto(key) {
+  photoImg.style.transform = 'scale(1)';
+  photoImg.style.transformOrigin = '50% 50%';
+  zoomFactor = 2.6;
+  photoImg.src = getPhotoDataURL(key);
+}
+
+/* =========================================================
+   16. 动画主循环
+   ========================================================= */
+const clock = new THREE.Clock();
+let elapsed = 0;
+const projVec = new THREE.Vector3();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), .05);
+  elapsed += dt;
+
+  /* --- 潮汐 --- */
+  const tideT = autoTide
+    ? .5 + .5 * Math.sin(elapsed * .22 - Math.PI / 2)
+    : undefined;
+
+  if (autoTide) {
+    const targetY = WATER_BASE + tideT * WATER_RANGE;
+    water.position.y += (targetY - water.position.y) * Math.min(1, dt * 2.2);
+    waterMat.opacity = .42 + tideT * .34;
+  }
+
+  const tideNow = (water.position.y - WATER_BASE) / WATER_RANGE;
+
+  /* --- 招潮蟹 --- */
+  const hide = tideNow > .72;
+  crabs.forEach(c => {
+    const ph = c.userData.phase;
+    const claw = c.userData.claw;
+    if (claw) claw.rotation.z = -.42 + Math.sin(elapsed * 3.2 + ph) * .28;
+    c.position.y = .02 + Math.abs(Math.sin(elapsed * 1.6 + ph)) * .02;
+    const tS = hide ? .001 : 1;
+    const s = c.scale.x + (tS - c.scale.x) * Math.min(1, dt * 5);
+    c.scale.setScalar(s);
+    c.visible = s > .02;
+  });
+
+  /* --- 弹涂鱼 --- */
+  fishes.forEach(f => {
+    const ph = f.userData.phase;
+    f.position.y = Math.max(0, Math.sin(elapsed * 1.9 + ph)) * .16;
+    f.rotation.z = Math.sin(elapsed * 1.9 + ph) * .14;
+    const tS = hide ? .001 : 1;
+    const s = f.scale.x + (tS - f.scale.x) * Math.min(1, dt * 5);
+    f.scale.setScalar(s);
+    f.visible = s > .02;
+  });
+
+  /* --- 白鹭（始终在高滩，永不落水） --- */
+  egret.position.y = EGRET_POS.y + Math.sin(elapsed * 1.1) * .012;
+  egret.rotation.y = -.9 + Math.sin(elapsed * .35) * .16;
+
+  /* --- 镜头飞行 --- */
+  if (fly) {
+    fly.t += dt / fly.dur;
+    const k = Math.min(1, fly.t);
+    const e = easeInOutQuad(k);
+    camera.position.lerpVectors(fly.p0, fly.p1, e);
+    controls.target.lerpVectors(fly.t0, fly.t1, e);
+    camera.lookAt(controls.target);
+    if (k >= 1) {
+      fly = null;
+      controls.enabled = true;
+      controls.update();
+    }
+  } else {
+    controls.update();
+  }
+
+  /* --- 标注跟随 --- */
+  if (showLabels) {
+    const w = window.innerWidth, h = window.innerHeight;
+    const panelLeft = panelOpen ? panelEl.getBoundingClientRect().left : Infinity;
+
+    labelObjs.forEach(l => {
+      projVec.copy(l.pos).project(camera);
+      const behind = projVec.z > 1;
+      if (behind) { l.el.style.opacity = '0'; l.el.style.pointerEvents = 'none'; return; }
+
+      const x = (projVec.x * .5 + .5) * w;
+      const y = (-projVec.y * .5 + .5) * h;
+
+      const offscreen = x < -160 || x > w + 160 || y < -60 || y > h + 60;
+      const covered = x > panelLeft - 30;
+
+      if (offscreen || covered) {
+        l.el.style.opacity = '0';
+        l.el.style.pointerEvents = 'none';
+      } else {
+        l.el.style.opacity = '1';
+        l.el.style.pointerEvents = 'auto';
+        l.el.style.transform = `translate(-50%,-50%) translate(${x}px, ${y}px)`;
+      }
+    });
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* =========================================================
+   17. 启动
+   ========================================================= */
+animate();
+
+/* 首帧渲染后移除加载层 */
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    const boot = document.getElementById('boot');
+    if (boot) {
+      boot.style.opacity = '0';
+      setTimeout(() => boot.remove(), 500);
+    }
+  });
+});
+
+/* 预生成第一张图，避免首次点击卡顿 */
+setTimeout(() => { getPhotoDataURL('root'); }, 900);
+</script>
+</body>
+</html>
